@@ -21,6 +21,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Світло Одеса">
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
 <style>
 :root{
   --bg:#14181f; --panel:#1c222b; --panel2:#252d38; --line:#333d4a;
@@ -203,6 +204,8 @@ a{color:var(--accent)}
 .pin.maybe{background:var(--maybe)} .pin.mix{background:var(--mix)} .home .hd.maybe{background:var(--maybe)}
 .strip i.mb{background:var(--maybe);color:#3d2c00}
 .status.maybe .dot{background:var(--maybe)}
+.hn{position:absolute;transform:translate(-50%,-50%);font:600 10px/1 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#10141a;white-space:nowrap;pointer-events:none;
+  text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff}
 label[for=selRem],#selRem,label[for=selSp],#selSp{display:none}
 </style>
 </head>
@@ -306,11 +309,13 @@ label[for=selRem],#selRem,label[for=selSp],#selSp{display:none}
   <p>Базу «будинок → черга» зібрано з сайту ДТЕК <span id="baseDate"></span>. ДТЕК час від часу переводить будинки між чергами, тож для певності звіряйте свою чергу на сайті ДТЕК.</p>
   <p>Графік діє, коли «Укренерго» застосовує обмеження. Аварійні відключення і ремонти на цій карті не показано.</p>
   <p>Сторінка не збирає жодних даних про відвідувачів. Збережені адреси зберігаються лише у вашому браузері.</p>
-  <p>Карта і координати будинків: © учасники <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>. Сторінка неофіційна, можливі неточності у визначенні адреси.</p>
+  <p>Карта: <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> на даних <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>. Координати і номери будинків: © учасники OpenStreetMap. Сторінка неофіційна, можливі неточності у визначенні адреси.</p>
   <div class="psfoot">© 2026 Oleh Pryimachuk<span class="sep">|</span>Розробка та підтримка<span class="sep">|</span><a href="https://t.me/primus_ua" target="_blank" rel="noopener">Зв'язок у Telegram</a><span class="sep">·</span><a href="#" id="mailLink">Email</a></div>
 </div>
 
 <script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/maplibre/maplibre-gl.js"></script>
+<script src="vendor/maplibre/leaflet-maplibre-gl.js"></script>
 <script>
 (function(){
 "use strict";
@@ -437,14 +442,39 @@ var STCOL={off:"#f0524f",on:"#35c26b",maybe:"#e9b949",mix:"#a78bfa",acc:"#f59e0b
 function intervals(row){var out=[],s=0,c="0";for(var i=0;i<=48;i++){var x=i<48?row.charAt(i):"0";if(x!==c){if(c!=="0")out.push([s,i,c]);s=i;c=x}}return out}
 
 /* ---------- карта ---------- */
-var map=L.map("map",{zoomControl:false,attributionControl:true,tap:false,preferCanvas:true}).setView([46.4775,30.7326],13);
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+var map=L.map("map",{zoomControl:false,attributionControl:true,tap:false,preferCanvas:true,minZoom:9,maxZoom:19}).setView([46.4775,30.7326],13);
+// Підкладка: векторна карта OpenFreeMap (світла або темна за темою). Якщо WebGL чи сервіс недоступні, звичайні плитки OpenStreetMap.
+var OSM_ATTR='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', base=null, baseKey="";
+function rasterBase(){
+  if(base) map.removeLayer(base); baseKey="raster";
+  base=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:OSM_ATTR}).addTo(map);
+}
+function setBase(){
+  var dark=document.documentElement.getAttribute("data-theme")==="dark", key=dark?"dark":"liberty";
+  if(baseKey===key||baseKey==="raster") return;
+  if(!(window.maplibregl&&L.maplibreGL)){ rasterBase(); return }
+  try{
+    var layer=L.maplibreGL({style:"https://tiles.openfreemap.org/styles/"+key,attribution:'<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> '+OSM_ATTR}).addTo(map);
+    var gl=layer.getMaplibreMap(), ok=false;
+    gl.once("load",function(){
+      ok=true;
+      // підписи лише українською (стиль за замовчуванням дублює їх латинкою)
+      try{ gl.getStyle().layers.forEach(function(l){
+        var tf=l.type==="symbol"&&l.layout&&l.layout["text-field"], t=tf?JSON.stringify(tf):"";
+        if(t.indexOf("name")>=0&&t.indexOf("ref")<0&&t.indexOf("housenumber")<0) gl.setLayoutProperty(l.id,"text-field",["coalesce",["get","name:uk"],["get","name"]]);
+      }) }catch(e){ console.warn("підписи карти:",e&&e.message) }
+    });
+    setTimeout(function(){ if(!ok&&base===layer){ console.warn("векторна карта не завантажилась, перемикаюсь на плитки OpenStreetMap"); rasterBase() } },10000);
+    if(base) map.removeLayer(base); base=layer; baseKey=key;
+  }catch(e){ console.warn("векторна карта недоступна:",e&&e.message); rasterBase() }
+}
 map.attributionControl.setPrefix(false);
 window.svitloMap=map;
-var dots=L.layerGroup().addTo(map), pin=null, lastResult=null, renderer=L.canvas({padding:.3});
+var dots=L.layerGroup().addTo(map), nums=L.layerGroup().addTo(map), pin=null, lastResult=null, renderer=L.canvas({padding:.3});
 
 function ring(lat,lon,a){var r=[];for(var i=0;i<a.length;i+=2)r.push([lat+a[i]/1e6,lon+a[i+1]/1e6]);return r}
 function inRing(lat,lon,r){var c=false;for(var i=0,j=r.length-1;i<r.length;j=i++){var yi=r[i][0],xi=r[i][1],yj=r[j][0],xj=r[j][1];if((yi>lat)!==(yj>lat)&&lon<(xj-xi)*(lat-yi)/(yj-yi)+xi)c=!c}return c}
+function polyCenter(r){var a=0,b=0;for(var i=0;i<r.length;i++){a+=r[i][0];b+=r[i][1]}return [a/r.length,b/r.length]}
 function cellKey(lat,lon){return Math.floor(lat*TS)+"_"+Math.floor(lon*TS)}
 function ring2(lat,lon,a){var r=[],y=Math.round(lat*1e5),x=Math.round(lon*1e5);for(var i=0;i<a.length;i+=2){y+=a[i];x+=a[i+1];r.push([y/1e5,x/1e5])}return r}
 function loadCell(k){
@@ -463,11 +493,11 @@ function cellsAround(lat,lon,pad){
 function distM(a,b,c,d){var x=(d-b)*Math.cos((a+c)/2*Math.PI/180)*111320,y=(c-a)*110540;return Math.sqrt(x*x+y*y)}
 
 function redrawDots(){
-  dots.clearLayers();
+  dots.clearLayers(); nums.clearLayers();
   if(map.getZoom()<16||!CELLS) return;
   var b=map.getBounds().pad(.15), c=map.getCenter();
   cellsAround(c.lat,c.lng,Math.max(b.getNorth()-b.getSouth(),.002)/2).then(function(cells){
-    dots.clearLayers(); var n=0, drawn={};
+    dots.clearLayers(); nums.clearLayers(); var n=0, drawn={}, nl=0, lab=map.getZoom()>=18, vb=map.getBounds();
     cells.forEach(function(cell){cell.pts.forEach(function(p){
       if((!p.h&&!p.poly)||n>7000||!b.contains([p.lat,p.lon])) return; n++;
       var q0=codeInfo(p.codes[0]).q, st, col;
@@ -478,6 +508,9 @@ function redrawDots(){
       if(p.poly){var pk=p.poly[0][0].toFixed(6)+p.poly[0][1].toFixed(6)+p.poly.length; if(drawn[pk]) return; drawn[pk]=1}
       if(p.poly) L.polygon(p.poly,{renderer:renderer,weight:1,color:STLINE[st]||"#445",fillColor:col,fillOpacity:p.inf?.55:.8,interactive:false}).addTo(dots);
       else L.circleMarker([p.lat,p.lon],{renderer:renderer,radius:map.getZoom()>=18?6:4,weight:1,color:"#fff",opacity:p.inf?.6:1,fillOpacity:p.inf?.6:.95,fillColor:col,interactive:false}).addTo(dots);
+      // номери будинків поверх зафарбованих контурів (лише зблизька)
+      if(lab&&p.h&&nl<350&&vb.contains([p.lat,p.lon])){ nl++; var c=p.poly?polyCenter(p.poly):[p.lat,p.lon];
+        L.marker(c,{interactive:false,keyboard:false,icon:L.divIcon({className:"",iconSize:[0,0],html:'<div class="hn">'+esc(p.h)+'</div>'})}).addTo(nums) }
     })});
   });
 }
@@ -789,6 +822,7 @@ function applyTheme(){
   document.documentElement.setAttribute("data-theme",dark?"dark":"light");
   document.querySelector('meta[name=theme-color]').content=dark?"#14181f":"#f2f4f7";
   Array.prototype.forEach.call($("themeSeg").children,function(b){b.className=b.dataset.t===t?"on":""});
+  setBase();
 }
 $("themeSeg").onclick=function(e){var t=e.target.dataset&&e.target.dataset.t;if(!t)return;ls("svitlo.theme",t);applyTheme();track("Тема: "+t)};
 try{matchMedia("(prefers-color-scheme: light)").addEventListener("change",applyTheme)}catch(e){}
