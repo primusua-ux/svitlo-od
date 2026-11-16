@@ -1,0 +1,41 @@
+name: Координати будинків з OpenStreetMap
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["scripts/osm_extract.py", "scripts/pick_boundary.py", "scripts/build_points.py", "scripts/build_addresses.py", "scripts/norm.py", "data/dtek_odesa.json", ".github/workflows/osm.yml"]
+permissions:
+  contents: write
+concurrency: osm
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+      - name: Завантажити витяг України (Geofabrik)
+        run: curl -fL --retry 3 -o /tmp/ua.osm.pbf https://download.geofabrik.de/europe/ukraine-latest.osm.pbf
+      - name: Вирізати Одесу за межею міста і відфільтрувати
+        run: |
+          osmium extract -s smart -b 30.45,46.25,31.00,46.75 /tmp/ua.osm.pbf -o /tmp/box.osm.pbf
+          osmium tags-filter /tmp/box.osm.pbf r/boundary=administrative -o /tmp/b.osm.pbf
+          osmium export /tmp/b.osm.pbf -f geojson -o /tmp/b.geojson
+          python3 scripts/pick_boundary.py /tmp/b.geojson /tmp/odesa.geojson
+          osmium extract -s complete_ways -p /tmp/odesa.geojson /tmp/box.osm.pbf -o /tmp/od.osm.pbf
+          osmium tags-filter /tmp/od.osm.pbf nwr/addr:housenumber n/place w/highway wr/building -o /tmp/f.osm.pbf
+          osmium export /tmp/f.osm.pbf -f geojsonseq --add-unique-id=type_id -o /tmp/f.geojsonseq
+          osmium tags-filter /tmp/od.osm.pbf r/type=associatedStreet,street -R -o /tmp/rel.osm.pbf
+          osmium cat /tmp/rel.osm.pbf -f opl -o /tmp/rel.opl
+          ls -la /tmp/*.pbf /tmp/f.geojsonseq
+      - run: python3 scripts/osm_extract.py /tmp/f.geojsonseq data/osm /tmp/rel.opl
+      - name: Зіставити з базою ДТЕК
+        run: |
+          python3 scripts/build_addresses.py data/dtek_odesa.json data
+          python3 scripts/build_points.py data
+      - run: |
+          git config user.name "osm-bot"
+          git config user.email "osm-bot@users.noreply.github.com"
+          git add data
+          git commit -m "Дані: координати будинків з OpenStreetMap і зіставлення з базою ДТЕК" || exit 0
+          git pull --rebase && git push
