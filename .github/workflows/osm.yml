@@ -15,7 +15,12 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
       - name: Завантажити витяг України (Geofabrik)
-        run: curl -fL --retry 3 -o /tmp/ua.osm.pbf https://download.geofabrik.de/europe/ukraine-latest.osm.pbf
+        run: |
+          for i in 1 2 3 4 5 6; do
+            curl -fL --connect-timeout 30 --retry 3 --retry-all-errors --retry-delay 15 -o /tmp/ua.osm.pbf https://download.geofabrik.de/europe/ukraine-latest.osm.pbf && break
+            echo "спроба $i не вдалася, чекаю"; sleep 45
+          done
+          test -s /tmp/ua.osm.pbf
       - name: Вирізати Одесу за межею міста і відфільтрувати
         run: |
           osmium extract -s smart -b 30.45,46.25,31.00,46.75 /tmp/ua.osm.pbf -o /tmp/box.osm.pbf
