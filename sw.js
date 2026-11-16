@@ -1,9 +1,9 @@
 /* Світло є?: офлайн-кеш.
    Сторінка і графік: спершу мережа, без мережі збережена копія.
    Дані адрес і будинків: одразу з кешу, у фоні оновлюються.
-   Бібліотека карти та іконки: з кешу. Фрагменти карти OSM: переглянуті, до 600 штук. */
-var V = "svitlo-od-v1", TILES = "svitlo-od-tiles-v1";   // префікс свій: на цьому ж домені живе сторінка Житомира зі своїм кешем
-var SHELL = ["./", "index.html", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css", "manifest.webmanifest", "icons/icon-192.png"];
+   Бібліотека карти та іконки: з кешу. Фрагменти карти: переглянуті, до 600 штук. */
+var V = "svitlo-od-v2", TILES = "svitlo-od-tiles-v2";   // префікс свій: на цьому ж домені живе сторінка Житомира зі своїм кешем
+var SHELL = ["./", "index.html", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css", "vendor/maplibre/maplibre-gl.js", "vendor/maplibre/maplibre-gl.css", "vendor/maplibre/leaflet-maplibre-gl.js", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", function (e) {
   e.waitUntil(caches.open(V).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));
@@ -46,6 +46,7 @@ self.addEventListener("fetch", function (e) {
   var req = e.request; if (req.method !== "GET") return;
   var u = new URL(req.url);
   if (u.hostname === "raw.githubusercontent.com") { e.respondWith(networkFirst(req)); return; }
+  if (u.hostname === "tiles.openfreemap.org") { e.respondWith(staleWhileRevalidate(req, TILES)); trimTiles(); return; }   // векторна карта: стиль, шрифти, фрагменти
   if (u.hostname.endsWith("tile.openstreetmap.org")) { e.respondWith(staleWhileRevalidate(req, TILES)); trimTiles(); return; }
   if (u.origin !== location.origin) return;                         // статистика та інше: без втручання
   if (req.mode === "navigate" || /\/(index\.html)?$/.test(u.pathname) || /schedule\.json$/.test(u.pathname)) { e.respondWith(networkFirst(req)); return; }
