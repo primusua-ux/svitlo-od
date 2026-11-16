@@ -443,14 +443,14 @@ function intervals(row){var out=[],s=0,c="0";for(var i=0;i<=48;i++){var x=i<48?r
 
 /* ---------- карта ---------- */
 var map=L.map("map",{zoomControl:false,attributionControl:true,tap:false,preferCanvas:true,minZoom:9,maxZoom:19}).setView([46.4775,30.7326],13);
-// Підкладка: векторна карта OpenFreeMap (світла або темна за темою). Якщо WebGL чи сервіс недоступні, звичайні плитки OpenStreetMap.
+// Підкладка: векторна карта OpenFreeMap (завжди світла). Якщо WebGL чи сервіс недоступні, звичайні плитки OpenStreetMap.
 var OSM_ATTR='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', base=null, baseKey="";
 function rasterBase(){
   if(base) map.removeLayer(base); baseKey="raster";
   base=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:OSM_ATTR}).addTo(map);
 }
 function setBase(){
-  var dark=document.documentElement.getAttribute("data-theme")==="dark", key=dark?"dark":"liberty";
+  var key="liberty";   // карта завжди світла, незалежно від теми інтерфейсу: темний стиль автору не сподобався
   if(baseKey===key||baseKey==="raster") return;
   if(!(window.maplibregl&&L.maplibreGL)){ rasterBase(); return }
   try{
