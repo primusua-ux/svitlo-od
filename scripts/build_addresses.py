@@ -11,7 +11,7 @@ CITY = d.get("city", "м. Одеса")
 
 # частини будинку (приміщення, квартира, офіс, секція, гараж): графік показуємо за будинком у цілому
 SUB = re.compile(r"[/,\s]*(?:прим|при|пр|пом|квартира|кв|офіс|оф|секція|секц|сек|гараж|гар|каб|ком|літ|кафе|тп)\b\.?.*$", re.I)
-KORP = re.compile(r"[/,\s]*(?:корпус|корп|кор|ко)\b\.?\s*(?=\d)", re.I)
+KORP = re.compile(r"(?:[/,\s]*(?:корпус|корп|кор)|[/,\s]+(?:ко|к))\.?\s*(?=\d)", re.I)
 
 def house(h):
     h = h.strip()
@@ -36,6 +36,18 @@ for st, hs in d["streets"].items():
         if not h: skipped += 1; continue
         for g in groups.split(","):
             if re.fullmatch(r"\d\.\d", g): tree[st][g].add(h)
+# та сама вулиця, записана в базі двома способами (Бесарабська / Бессарабська): зводимо до назви з більшою кількістю будинків
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from norm import street_key, fold_key
+clusters = defaultdict(list)
+for st in tree: clusters[fold_key(street_key(st))].append(st)
+for names in clusters.values():
+    if len(names) < 2: continue
+    names.sort(key=lambda st: -len({h for v in tree[st].values() for h in v})); main = names[0]
+    for st in names[1:]:
+        for g, v in tree[st].items(): tree[main][g] |= v
+        del tree[st]
+    print("об'єднано написання:", " + ".join(names), "->", main)
 data = {CITY: {st: {g: ",".join(sorted(v, key=hsort)) for g, v in sorted(gs.items())} for st, gs in sorted(tree.items())}}
 json.dump(data, open(f"{out}/rem/1.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 json.dump({"Одеса": {"file": "rem/1.json", "settlements": [CITY], "updated": d.get("collected", "")[:10]}},

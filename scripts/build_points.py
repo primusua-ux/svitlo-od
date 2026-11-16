@@ -7,7 +7,7 @@ from collections import defaultdict, Counter
 
 D = sys.argv[1] if len(sys.argv) > 1 else "data"
 
-from norm import LAT2CYR, street_key, house_key, place_key
+from norm import LAT2CYR, street_key, house_key, place_key, fold_key, ALIAS
 
 def dist(a, b, c, d):
     x = (d - b) * math.cos(math.radians((a + c) / 2)) * 111.32; y = (c - a) * 110.54
@@ -112,11 +112,20 @@ for ln in gzip.open(f"{D}/osm/streets.tsv.gz", "rt", encoding="utf-8"):
 def _toks(name):
     t = name.split(); return {x for x in t if x.isdigit()}, {x for x in t if not x.isdigit()}
 
+_folded = {}
 def find_street(m, sk, la, lo, fuzzy=True):
     """Ключ вулиці в базі населеного пункту m для OSM-ключа sk (тип, перейменування, скорочені імена)."""
+    if sk[1] in ALIAS: sk = (sk[0], ALIAS[sk[1]])
     if sk in m: return sk
     alts = [k for k in m if k[1] == sk[1]]
     if len(alts) == 1: return alts[0]
+    fm = _folded.get(id(m))                       # те саме, але без різниць у написанні (є/е, и/і, -ів-/-ов- тощо)
+    if fm is None:
+        fm = _folded[id(m)] = (defaultdict(list), defaultdict(list))
+        for k in m: fk = fold_key(k); fm[0][fk].append(k); fm[1][fk[1]].append(k)
+    fk = fold_key(sk)
+    if len(fm[0].get(fk, ())) == 1: return fm[0][fk][0]
+    if len(fm[1].get(fk[1], ())) == 1: return fm[1][fk[1]][0]
     for ak in alias[(int(la * 10), int(lo * 10))].get(sk, ()):
         if ak in m: return ak
         alts = [k for k in m if k[1] == ak[1]]
