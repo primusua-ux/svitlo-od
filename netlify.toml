@@ -1,0 +1,13 @@
+# Сайт статичний: збірки немає, публікується корінь репозиторію.
+[build]
+  publish = "."
+  command = ""
+  # Код 0 = пропустити деплой. Правило в scripts/netlify-ignore.sh:
+  # сторінка і дані виходять на Netlify не частіше ніж раз на 3 доби.
+  # Терміновий деплой: мітка [netlify] у повідомленні коміту.
+  ignore = "bash scripts/netlify-ignore.sh"
+
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "public, max-age=300"
